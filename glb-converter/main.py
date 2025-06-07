@@ -1,50 +1,83 @@
-from pygltflib import GLTF2
+from pygltflib import GLTF2, BufferFormat
 import struct
+import base64
 
-def read_accessor_data(gltf, accessor_index, buffer_data):
+# === Utility Functions ===
+
+def load_buffer(uri, glb_path):
+    if uri.startswith('data:'):
+        # Embedded base64 buffer
+        header, data = uri.split(',', 1)
+        return base64.b64decode(data)
+    else:
+        # External .bin file
+        with open(uri, 'rb') as f:
+            return f.read()
+
+def read_accessor_data(gltf, accessor_index, buffer_bytes):
     accessor = gltf.accessors[accessor_index]
-    bufferView = gltf.bufferViews[accessor.bufferView]
-    byteOffset = bufferView.byteOffset or 0
-    componentType = accessor.componentType
-    count = accessor.count
-    dtype = {
-        5126: 'f',  # float32
-    }[componentType]
+    buffer_view = gltf.bufferViews[accessor.bufferView]
+    start = (buffer_view.byteOffset or 0) + (accessor.byteOffset or 0)
+    length = accessor.count
+    component_type = accessor.componentType
+    type_str = accessor.type
 
-    num_components = {
-        'SCALAR': 1,
-        'VEC2': 2,
-        'VEC3': 3,
-        'VEC4': 4,
-    }[accessor.type]
+    # Map GLTF type/component to Python struct format
+    type_count = {
+        "SCALAR": 1,
+        "VEC2": 2,
+        "VEC3": 3,
+        "VEC4": 4
+    }[type_str]
 
-    start = byteOffset + (accessor.byteOffset or 0)
-    stride = bufferView.byteStride or num_components * struct.calcsize(dtype)
-    values = []
+    fmt_map = {
+        5126: 'f',  # FLOAT
+        5123: 'H',  # UNSIGNED_SHORT
+        5125: 'I'   # UNSIGNED_INT
+    }
 
-    for i in range(count):
+    stride = buffer_view.byteStride or (type_count * struct.calcsize(fmt_map[component_type]))
+    fmt = fmt_map[component_type]
+
+    results = []
+    for i in range(length):
         offset = start + i * stride
-        chunk = buffer_data[offset: offset + num_components * 4]
-        values.append(struct.unpack('<' + dtype * num_components, chunk))
+        chunk = buffer_bytes[offset: offset + (type_count * struct.calcsize(fmt))]
+        values = struct.unpack('<' + fmt * type_count, chunk)
+        results.append(values)
+    return results
 
-    return values
+# === Load GLB ===
 
-# Load GLB
+glb_path = "input.glb"
+gltf = GLTF2().load(glb_path)
+buffer_data = load_buffer(gltf.buffers[0].uri, glb_path)
 
-# Load GLB
-gltf = GLTF2().load("input.glb")
-buffer_data = gltf.binary_blob()  # ← correctly gets embedded .glb data
+# === Extract Data from First Mesh ===
 
-# Assume first mesh, primitive
 primitive = gltf.meshes[0].primitives[0]
 
+# Positions
 positions = read_accessor_data(gltf, primitive.attributes.POSITION, buffer_data)
-normals   = read_accessor_data(gltf, primitive.attributes.NORMAL, buffer_data)
-texcoord_index = primitive.attributes._attributes.get('TEXCOORD_0')
-uvs = read_accessor_data(gltf, texcoord_index, buffer_data) if texcoord_index is not None else [(0.0, 0.0)] * len(positions)
-# Write to .mesh
+
+# Normals
+normals = read_accessor_data(gltf, primitive.attributes.NORMAL, buffer_data) if hasattr(primitive.attributes, 'NORMAL') else [(0.0, 1.0, 0.0)] * len(positions)
+
+# UVs
+if hasattr(primitive.attributes, 'TEXCOORD_0'):
+    uvs = read_accessor_data(gltf, primitive.attributes.TEXCOORD_0, buffer_data)
+else:
+    uvs = [(0.0, 0.0)] * len(positions)
+
+# === Output as Roblox Mesh v1 Format ===
+
 with open("output.mesh", "w") as f:
     f.write("version 1.00\n")
-    f.write("2100\n")
-    for pos, norm, uv in zip(positions, normals, uvs):
-        f.write(f"[{pos[0]},{pos[1]},{pos[2]}][{norm[0]},{norm[1]},{norm[2]}][{uv[0]},{uv[1]},0]\n")
+    f.write(f"{len(positions)}\n")
+    for i in range(len(positions)):
+        v = positions[i]
+        n = normals[i]
+        t = uvs[i]
+        f.write(f"[{v[0]},{v[1]},{v[2]}][{n[0]},{n[1]},{n[2]}][{t[0]},{t[1]},0]\n")
+
+print("✅ Mesh exported to 'output.mesh'")
