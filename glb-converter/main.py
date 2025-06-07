@@ -30,10 +30,10 @@ def read_accessor_data(gltf, accessor_index, buffer_data):
     return values
 
 # Load GLB
+
+# Load GLB
 gltf = GLTF2().load("input.glb")
-with open(gltf.buffers[0].uri or "input.glb", "rb") as f:
-    f.seek(gltf.buffers[0].byteOffset or 0)
-    buffer_data = f.read()
+buffer_data = gltf.binary_blob()  # ← correctly gets embedded .glb data
 
 # Assume first mesh, primitive
 primitive = gltf.meshes[0].primitives[0]
