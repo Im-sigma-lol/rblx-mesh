@@ -82,6 +82,8 @@ with open("output.mesh", "w") as f:
         v = positions[i]
         n = normals[i]
         t = uvs[i]
-        f.write(f"[{v[0]},{v[1]},{v[2]}][{n[0]},{n[1]},{n[2]}][{t[0]},{t[1]},0]\n")
+        f.write("[{:.6f},{:.6f},{:.6f}]".format(*v))
+        f.write("[{:.6f},{:.6f},{:.6f}]".format(*n))
+        f.write("[{:.6f},{:.6f},0]".format(*t))
 
 print("✅ Mesh exported to 'output.mesh'")
