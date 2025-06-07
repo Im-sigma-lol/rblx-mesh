@@ -1,12 +1,16 @@
-from pygltflib import GLTF2, BufferFormat
+from pygltflib import GLTF2
 import struct
 import base64
 
 # === Utility Functions ===
 
-def load_buffer(uri, glb_path):
-    if uri.startswith('data:'):
-        # Embedded base64 buffer
+def load_buffer(gltf, glb_path):
+    uri = gltf.buffers[0].uri
+    if uri is None:
+        # Binary buffer is embedded in .glb
+        return gltf.binary_blob()
+    elif uri.startswith('data:'):
+        # Embedded base64 buffer in .gltf
         header, data = uri.split(',', 1)
         return base64.b64decode(data)
     else:
@@ -51,7 +55,7 @@ def read_accessor_data(gltf, accessor_index, buffer_bytes):
 
 glb_path = "input.glb"
 gltf = GLTF2().load(glb_path)
-buffer_data = load_buffer(gltf.buffers[0].uri, glb_path)
+buffer_data = load_buffer(gltf, glb_path)
 
 # === Extract Data from First Mesh ===
 
