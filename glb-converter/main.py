@@ -1,34 +1,50 @@
-import trimesh
-import os
+from pygltflib import GLTF2
+import struct
 
-# Use the current directory
-input_path = "input.glb"
-output_path = "output.mesh"
+def read_accessor_data(gltf, accessor_index, buffer_data):
+    accessor = gltf.accessors[accessor_index]
+    bufferView = gltf.bufferViews[accessor.bufferView]
+    byteOffset = bufferView.byteOffset or 0
+    componentType = accessor.componentType
+    count = accessor.count
+    dtype = {
+        5126: 'f',  # float32
+    }[componentType]
 
-# Load the mesh
-mesh = trimesh.load(input_path, force='mesh')
+    num_components = {
+        'SCALAR': 1,
+        'VEC2': 2,
+        'VEC3': 3,
+        'VEC4': 4,
+    }[accessor.type]
 
-# Check if it's a Trimesh object
-if not isinstance(mesh, trimesh.Trimesh):
-    raise Exception("Model must contain a single mesh.")
+    start = byteOffset + (accessor.byteOffset or 0)
+    stride = bufferView.byteStride or num_components * struct.calcsize(dtype)
+    values = []
 
-vertices = mesh.vertices
-normals = mesh.vertex_normals
-uvs = mesh.visual.uv
+    for i in range(count):
+        offset = start + i * stride
+        chunk = buffer_data[offset: offset + num_components * 4]
+        values.append(struct.unpack('<' + dtype * num_components, chunk))
 
-if uvs is None:
-    raise Exception("UV coordinates not found.")
+    return values
 
-# Write in Roblox Mesh v1 format
-with open(output_path, "w") as f:
+# Load GLB
+gltf = GLTF2().load("input.glb")
+with open(gltf.buffers[0].uri or "input.glb", "rb") as f:
+    f.seek(gltf.buffers[0].byteOffset or 0)
+    buffer_data = f.read()
+
+# Assume first mesh, primitive
+primitive = gltf.meshes[0].primitives[0]
+
+positions = read_accessor_data(gltf, primitive.attributes.POSITION, buffer_data)
+normals   = read_accessor_data(gltf, primitive.attributes.NORMAL, buffer_data)
+uvs       = read_accessor_data(gltf, primitive.attributes.TEXCOORD_0, buffer_data) if 'TEXCOORD_0' in primitive.attributes else [(0.0, 0.0)] * len(positions)
+
+# Write to .mesh
+with open("output.mesh", "w") as f:
     f.write("version 1.00\n")
-    f.write(f"{len(vertices)}\n")
-    for i in range(len(vertices)):
-        pos = vertices[i]
-        nor = normals[i]
-        uv = uvs[i]
-        f.write(f"[{pos[0]},{pos[1]},{pos[2]}]"
-                f"[{nor[0]},{nor[1]},{nor[2]}]"
-                f"[{uv[0]},{uv[1]},0]\n")
-
-print("✅ Done! Mesh saved to:", output_path)
+    f.write("2100\n")
+    for pos, norm, uv in zip(positions, normals, uvs):
+        f.write(f"[{pos[0]},{pos[1]},{pos[2]}][{norm[0]},{norm[1]},{norm[2]}][{uv[0]},{uv[1]},0]\n")
