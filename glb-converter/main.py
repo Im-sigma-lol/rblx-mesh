@@ -40,7 +40,8 @@ primitive = gltf.meshes[0].primitives[0]
 
 positions = read_accessor_data(gltf, primitive.attributes.POSITION, buffer_data)
 normals   = read_accessor_data(gltf, primitive.attributes.NORMAL, buffer_data)
-uvs = read_accessor_data(gltf, primitive.attributes.get('TEXCOORD_0'), buffer_data) if primitive.attributes.get('TEXCOORD_0') is not None else [(0.0, 0.0)] * len(positions)
+texcoord_index = primitive.attributes._attributes.get('TEXCOORD_0')
+uvs = read_accessor_data(gltf, texcoord_index, buffer_data) if texcoord_index is not None else [(0.0, 0.0)] * len(positions)
 # Write to .mesh
 with open("output.mesh", "w") as f:
     f.write("version 1.00\n")
